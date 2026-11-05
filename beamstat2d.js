@@ -162,7 +162,7 @@ BS.determiningLength = function (Ls) {
 BS.dynAllowance = (L, v) => Math.min((180 + 8 * (v - 10)) / (20 + L), 35);
 
 BS.loadEffect = function (IL, type, opt0) {
-    const opt = Object.assign({ v: 80, dyn: true, both: true, Lphi: null, BK: 'BK1', gapL: 45, dx: 0.1, lanes: 1 }, opt0 || {});
+    const opt = Object.assign({ v: 80, dyn: true, both: true, Lphi: null, BK: 'BK1', gapL: 45, dx: 0.2, lanes: 1 }, opt0 || {});
     const T = BS.vehicleModel(type, opt.BK, opt.gapL, opt.lanes);
     const x = IL.x, dL = IL.dL, n = x.length, Gr = toGrid(T, dL, opt.dx), G0 = Gr.G;
 

@@ -6,7 +6,7 @@
 
    Andreas Andersson, 2026-11-05 (assisted by Claude)
 ---------------------------------------------------------------------------*/
-importScripts('beamstat2d.js?v=2026-11-05c');
+importScripts('beamstat2d.js?v=2026-11-05d');
 
 let IL = null;
 

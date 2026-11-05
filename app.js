@@ -9,10 +9,10 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-05c';
+const VER = '2026-11-05d';
 
 // ---------------------------------------------------------- default input
-const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.1', lanes: '1', v: '80', shw: 'Section' };
+const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', lanes: '1', v: '80', shw: 'Section' };
 const shwList = ['Section', 'Critical', 'Envelope'], bkList = ['BK1', 'BK2', 'BK3', 'BK4'];
 const typList = 'abcdefghijklmno'.split('');                          // TRVINFRA-00331 Bilaga 1
 const grpList = [['EN 1991-2', ['LM1']], ['TRVINFRA-00331', typList]];
@@ -536,7 +536,8 @@ const mdlPoint = ev => {
 };
 $('model').addEventListener('contextmenu', ev => ev.preventDefault());
 $('model').addEventListener('click', ev => ev.stopPropagation());
-$('model').addEventListener('mousedown', ev => {
+// pointer events: mouse and touch
+$('model').addEventListener('pointerdown', ev => {
     ev.stopPropagation(); ev.preventDefault();
     if (ui.busy || !ILa || !inputOK) return;
     removeSupSel(); mT.style.display = 'none';
@@ -554,8 +555,8 @@ $('model').addEventListener('mousedown', ev => {
         setSection(j);
         if (showMode() === 'Section') requestPlots();
     };
-    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    const up = () => { for (const [n, f] of [['pointermove', move], ['pointerup', up], ['pointercancel', up]]) window.removeEventListener(n, f); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
     move(ev);
 });
 function supMenu(bi) {
