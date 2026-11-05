@@ -9,10 +9,10 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-05b';
+const VER = '2026-11-05c';
 
 // ---------------------------------------------------------- default input
-const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.5', lanes: '1', v: '80', shw: 'Section' };
+const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.1', lanes: '1', v: '80', shw: 'Section' };
 const shwList = ['Section', 'Critical', 'Envelope'], bkList = ['BK1', 'BK2', 'BK3', 'BK4'];
 const typList = 'abcdefghijklmno'.split('');                          // TRVINFRA-00331 Bilaga 1
 const grpList = [['EN 1991-2', ['LM1']], ['TRVINFRA-00331', typList]];
@@ -22,7 +22,7 @@ const co = ['#0072BD', '#D95319'], nMax = 2e6, maxLanes = 20, snapTol = 0.05;   
 
 // shared state (as Main_gui)
 let inp = {}, mdl = {}, ILa = null, IL = null, LE = null, sup = [], jx = 0, xp = 0, sig = '';
-let xpAuto = true, L0 = '', inputOK = true, sel = ['LM1'], allS = new Map(), allN = [], allR = [], modelMap = null, tProg = 0;
+let xpAuto = true, L0 = '', inputOK = true, sel = loadList.slice(), allS = new Map(), allN = [], allR = [], modelMap = null, tProg = 0;
 const ui = { busy: false, stopReq: false, stopOn: false, stopTimer: null, abort: null };
 
 // ============================================================ helpers
@@ -137,7 +137,7 @@ function setDefaults() {
     $('iBK').value = def.BK; $('iDx').value = def.dx; $('iLanes').value = def.lanes;
     $('iV').value = def.v; $('iShw').value = def.shw;
     $('tPhi').checked = true; $('tD').checked = true; $('tR').checked = false; $('tF').checked = false;
-    sel = ['LM1']; xpAuto = true; L0 = ''; sup = []; sig = '';
+    sel = loadList.slice(); xpAuto = true; L0 = ''; sup = []; sig = '';
 }
 for (const id of ['iL', 'iEI', 'iBK', 'iDx', 'iLanes', 'iV']) $(id).addEventListener('change', () => updateModel());
 $('idL').addEventListener('change', e => { ui.dLset = e.target.value.trim(); updateModel(); });
@@ -366,7 +366,7 @@ async function calcEnv(prog) {
     if (nw.length) {
         const ILe = ilAt(mdl.env);
         const par = nw.length >= 3 && window.__noWorkers !== true;
-        if (par && !pool) makePool();
+        if (par && !pool && ui.started) makePool();              // the start-up analysis runs in the page: the workers are not warm yet
         if (par && pool) stopped = await runPool(nw, ILe, show);
         else stopped = await runSerial(nw, ILe, show);
     }
@@ -1151,6 +1151,7 @@ readInput();
 (async () => {
     await updateModel();
     setProg(null); setMsg('');                                   // the start-up run is not one the user asked for
+    ui.started = true;
     setTimeout(warmPool, 300);
 })();
 })();
