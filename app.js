@@ -9,7 +9,7 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-05d';
+const VER = '2026-11-05f';
 
 // ---------------------------------------------------------- default input
 const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', lanes: '1', v: '80', shw: 'Section' };
@@ -22,7 +22,7 @@ const co = ['#0072BD', '#D95319'], nMax = 2e6, maxLanes = 20, snapTol = 0.05;   
 
 // shared state (as Main_gui)
 let inp = {}, mdl = {}, ILa = null, IL = null, LE = null, sup = [], jx = 0, xp = 0, sig = '';
-let xpAuto = true, L0 = '', inputOK = true, sel = loadList.slice(), allS = new Map(), allN = [], allR = [], modelMap = null, tProg = 0;
+let xpAuto = true, L0 = '', inputOK = true, sel = ['LM1'], allS = new Map(), allN = [], allR = [], modelMap = null, tProg = 0;
 const ui = { busy: false, stopReq: false, stopOn: false, stopTimer: null, abort: null };
 
 // ============================================================ helpers
@@ -137,7 +137,7 @@ function setDefaults() {
     $('iBK').value = def.BK; $('iDx').value = def.dx; $('iLanes').value = def.lanes;
     $('iV').value = def.v; $('iShw').value = def.shw;
     $('tPhi').checked = true; $('tD').checked = true; $('tR').checked = false; $('tF').checked = false;
-    sel = loadList.slice(); xpAuto = true; L0 = ''; sup = []; sig = '';
+    sel = ['LM1']; xpAuto = true; L0 = ''; sup = []; sig = '';
 }
 for (const id of ['iL', 'iEI', 'iBK', 'iDx', 'iLanes', 'iV']) $(id).addEventListener('change', () => updateModel());
 $('idL').addEventListener('change', e => { ui.dLset = e.target.value.trim(); updateModel(); });
@@ -1090,7 +1090,7 @@ async function buildReport(full) {
     D.h2('Input');
     D.table('Bridge and traffic load.', ['', 'Value', 'Unit'], rows, ['', 'r', '']);
 
-    D.h2('Results', { newPage: true });
+    D.h2(anyT ? `Results, ${inp.BK}` : 'Results', { newPage: true });   // LM1 alone has no bearing class
     const vt = (() => {
         if (!sel.length) return `influence lines at $x$ = ${num(xp)} m`;
         const tr = sel[0];
