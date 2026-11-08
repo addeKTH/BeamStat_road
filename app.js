@@ -1,5 +1,5 @@
 /* app.js --------------------------------------------------------------------
-   Road bridge static load effects, web version of Main_gui.m in BeamStat_road (2026-11-05):
+   Road bridge static load effects, web version of Main_gui.m in BeamStat_road (2026-11-07):
    input, sketch and analysis of the ticked load models on every change (Web Workers from
    three new models), Section / Critical / Envelope, Run (Cancel after 5 s), Reset, Export
    (xlsx), Print (report by browser print to PDF).
@@ -9,16 +9,22 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-05f';
+const VER = '2026-11-08a';
 
 // ---------------------------------------------------------- default input
-const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', lanes: '1', v: '80', shw: 'Section' };
-const shwList = ['Section', 'Critical', 'Envelope'], bkList = ['BK1', 'BK2', 'BK3', 'BK4'];
+const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', w: '3', gap: '45', v: '80', shw: 'Section', EIopt: 'L/delta = 400' };   // EIopt '' = EI typed
+// EI from the deflection limit, TRVINFRA-00331 10.3.2.2.1: the options and the menu text
+const EIopts = ['L/delta = 400', 'L/delta = 300'];
+const EIlabel = o => `<i>L</i>/<i>δ</i><sub>V</sub> = ${o.slice(10)}   (${o.endsWith('400') ? '1975 rules and later' : '1960 rules and earlier'})`;
+// input limits, as Main_gui: element size, elements, total length (m), carriageway (m), LM length (m)
+const dLmin = 0.01, nElMax = 5000, Lmin = 1, Lmax = 2000, wMax = 60, Llm = 200;
+const shwList = ['Section', 'Critical', 'Envelope'], bkList = ['BK1', 'BK2', 'BK3', 'BK4'], gapList = ['45', '25'];
 const typList = 'abcdefghijklmno'.split('');                          // TRVINFRA-00331 Bilaga 1
-const grpList = [['EN 1991-2', ['LM1']], ['TRVINFRA-00331', typList]];
-const loadList = ['LM1', ...typList];                                 // the order of the results
-const groupOf = n => (n === 'LM1' ? 'EN 1991-2:2024' : 'TRVINFRA-00331');
-const co = ['#0072BD', '#D95319'], nMax = 2e6, maxLanes = 20, snapTol = 0.05;   // lanes accepted; axles moved more are reported (m)
+const lmList = ['LM1', 'LM2'];                                        // EN 1991-2:2024
+const grpList = [['EN 1991-2', lmList], ['TRVINFRA-00331', typList]];
+const loadList = [...lmList, ...typList];                             // the order of the results
+const groupOf = n => (n.startsWith('LM') ? 'EN 1991-2:2024' : 'TRVINFRA-00331');
+const co = ['#0072BD', '#D95319'], nMax = 2e6, snapTol = 0.05;        // axles moved more are reported (m)
 
 // shared state (as Main_gui)
 let inp = {}, mdl = {}, ILa = null, IL = null, LE = null, sup = [], jx = 0, xp = 0, sig = '';
@@ -132,14 +138,36 @@ const msgDone = (stopped, t0) => {
 // ============================================================ input fields
 for (const s of shwList) { const o = document.createElement('option'); o.textContent = s; $('iShw').appendChild(o); }
 for (const s of bkList) { const o = document.createElement('option'); o.textContent = s; $('iBK').appendChild(o); }
+for (const s of gapList) { const o = document.createElement('option'); o.textContent = s; $('iGap').appendChild(o); }
 function setDefaults() {
     $('iL').value = def.L; $('iEI').value = def.EI; ui.dLset = def.dL;
-    $('iBK').value = def.BK; $('iDx').value = def.dx; $('iLanes').value = def.lanes;
+    $('iBK').value = def.BK; $('iDx').value = def.dx; $('iW').value = def.w; $('iGap').value = def.gap;
     $('iV').value = def.v; $('iShw').value = def.shw;
     $('tPhi').checked = true; $('tD').checked = true; $('tR').checked = false; $('tF').checked = false;
     sel = ['LM1']; xpAuto = true; L0 = ''; sup = []; sig = '';
+    ui.EIopt = def.EIopt; ui.EIkey = '';
 }
-for (const id of ['iL', 'iEI', 'iBK', 'iDx', 'iLanes', 'iV']) $(id).addEventListener('change', () => updateModel());
+for (const id of ['iL', 'iBK', 'iDx', 'iW', 'iGap', 'iV']) $(id).addEventListener('change', () => updateModel());
+// a typed EI ends the computed one
+$('iEI').addEventListener('change', () => {
+    ui.EIopt = ''; ui.EIkey = ''; $('iEI').classList.remove('auto');
+    $('iEI').title = 'Flexural rigidity, one value or one per span; or from a deflection limit with the button';
+    updateModel();
+});
+// the EI menu below its button: a limit picked computes EI
+$('bEI').addEventListener('click', ev => {
+    ev.stopPropagation();
+    const m = $('mEI'); m.innerHTML = '';
+    EIopts.forEach(o => {
+        const d = document.createElement('div');
+        d.innerHTML = EIlabel(o);
+        if (ui.EIopt === o) d.className = 'chk';
+        d.addEventListener('click', e => { e.stopPropagation(); m.style.display = 'none'; ui.EIopt = o; ui.EIkey = ''; updateModel(); });
+        m.appendChild(d);
+    });
+    m.style.left = $('bEI').offsetLeft + 'px'; m.style.top = ($('bEI').offsetTop + 22) + 'px'; m.style.display = 'block';
+    $('mLoad').style.display = 'none';
+});
 $('idL').addEventListener('change', e => { ui.dLset = e.target.value.trim(); updateModel(); });
 $('iXp').addEventListener('change', () => { xpAuto = false; updateModel(); });
 $('iShw').addEventListener('change', () => { if (!ui.busy && ILa) updatePlots(); });
@@ -175,13 +203,14 @@ mT.addEventListener('click', ev => ev.stopPropagation());
 const toggleLoad = ev => {
     ev.stopPropagation();
     if (ui.busy) return;
+    $('mEI').style.display = 'none';
     if (mT.style.display === 'block') { mT.style.display = 'none'; return; }
     mT.style.left = $('iLoad').offsetLeft + 'px'; mT.style.top = ($('iLoad').offsetTop + 23) + 'px'; mT.style.display = 'block';
 };
 $('iLoad').addEventListener('click', toggleLoad);
 $('bLoad').addEventListener('click', toggleLoad);
 document.addEventListener('click', () => {
-    mT.style.display = 'none';
+    mT.style.display = 'none'; $('mEI').style.display = 'none';
     if (ui.supJust) { ui.supJust = false; return; }              // the click that opened the support menu
     removeSupSel();
 });
@@ -201,19 +230,30 @@ function syncTicks() {
 
 // ============================================================ input / model
 function readInput() {
-    const L = parseVec($('iL').value), EI = parseVec($('iEI').value), dL = scalar(ui.dLset);
-    const okL = !!L && L.every(v => v > 0);
+    const L = parseVec($('iL').value), EI = parseVec($('iEI').value);
+    let dL = scalar(ui.dLset);
+    const okL = goodVec(L);
     if (okL && L.join() !== L0) { xpAuto = true; L0 = L.join(); }     // new spans: x_p back at the first midspan
-    // the field: as typed, or (grey) the length in use where a short bridge needs more
-    // elements; the typed value returns when the bridge is longer again
+    // dL: a negative value counts as positive, at least dLmin, and these replace what was typed
+    if (dL !== null && (dL < 0 || Math.abs(dL) < dLmin)) { dL = Math.max(Math.abs(dL), dLmin); ui.dLset = gfmt(dL); }
+    // the field: as typed, or (grey) the length in use where a span needs a shorter element,
+    // at most a tenth of the shortest span, or a long bridge fewer elements (at most nElMax,
+    // in whole cm), or a short bridge more elements; the typed value returns when it fits again
     let dLshow = ui.dLset, dLgrey = false;
-    if (okL && dL > 0) {
-        const s0 = L.reduce((a, b) => a + b, 0), ne = BS.nElements(s0, dL);
-        if (ne !== rnd(s0 / dL)) { dLshow = gfmt(s0 / ne); dLgrey = true; }
+    ui.nCap = false;
+    if (okL && dL !== null) {
+        const s0 = sum(L), dMax = Math.max(Math.min(...L) / 10, dLmin);
+        if (dL > dMax) { dL = dMax; dLshow = gfmt(dL); dLgrey = true; }
+        // dL in whole cm; the spans are then rounded to whole elements, which may add one per
+        // span, so that is allowed: the rounded spans give the same dL on the next update
+        let dN = Math.max(Math.floor(s0 / nElMax * 100) / 100, dLmin);
+        while (sum(L.map(l => rnd(l / dN))) > nElMax + L.length) dN = Number((dN + 0.01).toFixed(2));
+        if (dL < dN) { dL = dN; ui.nCap = true; dLshow = gfmt(dL); dLgrey = true; }
+        if (s0 < 10 && rnd(s0 / dL) < 100) { dLshow = gfmt(s0 / 100); dLgrey = true; }
     }
     $('idL').value = dLshow; $('idL').classList.toggle('auto', dLgrey);
-    if (xpAuto && okL) $('iXp').value = String(L[0] / 2);        // midspan of the first span, until moved by hand
-    const xv = scalar($('iXp').value);
+    if (xpAuto && okL) $('iXp').value = gfmt(L[0] / 2);          // midspan of the first span, until moved by hand
+    let xv = scalar($('iXp').value);
     inp.L = L; inp.EI = EI; inp.dL = dL;
     syncTicks();
     inp.load = sel;
@@ -222,32 +262,82 @@ function readInput() {
     const T0 = BS.vehicleModel('a', inp.BK);
     $('iBK').title = `Bearing class: A/B = ${T0.A / 1e3}/${T0.B / 1e3} kN`;
     // each box only where it applies; a bad value in a hidden box does not count
-    const onT = sel.some(n => typList.includes(n)), onV = inp.dyn && onT, onL = sel.includes('LM1');
+    const onT = sel.some(n => typList.includes(n)), onV = inp.dyn && onT;
+    const onW = sel.includes('LM1') || onT || !!ui.EIopt, onG = sel.some(n => ['j', 'k', 'l'].includes(n));   // the lanes matter; the gap
     const show = (ids, on) => ids.forEach(id => { $(id).style.display = on ? '' : 'none'; });
-    show(['iBK', 'lBK', 'iDx', 'lDx'], onT); show(['iV', 'lV'], onV); show(['iLanes', 'lLanes'], onL);
-    const yL = (onT ? 164 : 112) + 'px';                         // LM1 alone: Lanes under the load model
-    $('iLanes').style.top = yL; $('lLanes').style.top = yL;
-    inp.lanes = scalar($('iLanes').value);
-    if (inp.lanes !== null) { inp.lanes = Math.max(rnd(inp.lanes), 1); $('iLanes').value = String(inp.lanes); }
-    else if (!onL) inp.lanes = Number(def.lanes);
+    show(['iBK', 'lBK', 'iDx', 'lDx'], onT); show(['iV', 'lV'], onV); show(['iW', 'lW'], onW); show(['iGap', 'lGap'], onG);
+    const yW = (onT ? 164 : 112) + 'px';                         // no type vehicle: w under the load model
+    $('iW').style.top = yW; $('lW').style.top = yW;
+    inp.gapL = Number($('iGap').value);
+    const goodW = v => v !== null && v > 0 && v <= wMax;
+    inp.w = scalar($('iW').value);
+    if (!onW && !goodW(inp.w)) inp.w = Number(def.w);
+    if (goodW(inp.w)) {
+        const [nLM, , wrLM] = BS.lanes(inp.w), nTV = Math.min(Math.max(Math.floor(inp.w / 3 + 1e-9), 1), 4);
+        $('iW').title = `Carriageway width: LM1 ${nLM} notional lane${nLM > 1 ? 's' : ''} and a remaining area of ${Number(wrLM.toPrecision(3))} m ` +
+            `(EN 1991-2:2024 Table 6.1); type vehicles ${nTV} lane${nTV > 1 ? 's' : ''}, vehicles in ${Math.min(nTV, 2)} (times 1.0${nTV >= 2 ? ' and 0.8' : ''}), ` +
+            `q = 5 kN/m in ${Math.max(nTV - 2, 0)} (TRVINFRA-00331 K264958)`;
+    }
     inp.v = scalar($('iV').value);
     if (!onV && !(inp.v !== null && inp.v > 0)) inp.v = Number(def.v);
     inp.dx = $('iDx').value.trim() === '' ? 0 : scalar($('iDx').value);
     if (inp.dx !== null && inp.dx > 0 && inp.dx < 0.1) { inp.dx = 0.1; $('iDx').value = '0.1'; }   // 0 = the shortest spacing only
     if (!onT && !(inp.dx !== null && inp.dx >= 0)) inp.dx = Number(def.dx);
-    const ok = okL && EI && EI.every(v => v > 0) && (EI.length === 1 || EI.length === L.length)
-        && dL !== null && dL > 0 && dL <= Math.min(...L) && xv !== null
-        && inp.v !== null && inp.v > 0 && inp.dx !== null && inp.dx >= 0
-        && inp.lanes !== null && inp.lanes >= 1 && inp.lanes <= maxLanes;
+    // the total length may exceed Lmax by the rounding of the spans, half an element per span
+    const Ltol = okL && dL !== null ? L.length * Math.abs(dL) / 2 + 1e-9 : 0;
+    let ok = okL && sum(L) >= Lmin && sum(L) <= Lmax + Ltol && goodVec(EI) && (EI.length === 1 || EI.length === L.length)
+        && dL !== null && dL > 0 && xv !== null
+        && inp.v !== null && inp.v > 0 && inp.dx !== null && inp.dx >= 0 && goodW(inp.w);
+    if (ok) ok = realSpans();
     if (ok) {
-        xp = Math.min(Math.max(xv, 0), L.reduce((a, b) => a + b, 0));
+        if (xpAuto) { xv = inp.L[0] / 2; $('iXp').value = gfmt(xv); }
+        xp = Math.min(Math.max(xv, 0), sum(inp.L));
         $('tPhi').disabled = !onT;                               // Phi: only for the type vehicles
     } else setMsg('input error', RED);
     inputOK = !!ok;
     return inputOK;
 }
+const sum = a => a.reduce((p, c) => p + c, 0);
+// finite positive numbers, at least one (parseVec gives finite numbers or null)
+const goodVec = v => Array.isArray(v) && v.length > 0 && v.every(x => isFinite(x) && x > 0);
+// The supports stand on nodes: each span is rounded to a whole number of elements, and
+// replaces what was typed where it differs, so dL stays as it is.  A short bridge has its
+// 100 elements: there the total length stays and the grid follows from it.  False if a span
+// would vanish.  (As BeamStat_rail.)
+function realSpans() {
+    const Lt = sum(inp.L);
+    let LA, dA;
+    if (Lt < 10 && rnd(Lt / inp.dL) < 100) {
+        dA = Lt / 100; let c = 0;
+        const n = [0, ...inp.L.map(l => rnd((c += l) / dA))];
+        LA = inp.L.map((_, i) => (n[i + 1] - n[i]) * dA);
+    } else {
+        dA = inp.dL;
+        LA = inp.L.map(l => Number((rnd(l / dA) * dA).toFixed(10)));
+    }
+    if (!LA.every(v => v > 0)) { ui.Lmoved = false; return false; }
+    ui.Lmoved = LA.some((v, i) => Math.abs(v - inp.L[i]) > 1e-3 * dA);
+    if (ui.Lmoved) { inp.L = LA; L0 = LA.join(); $('iL').value = LA.map(gfmt).join(' '); }   // L0: not new spans for the marker
+    return true;
+}
+// no model: after a cancelled or failed EI from the limit
+function clearResults() {
+    ILa = null; IL = null; LE = null; allN = []; allR = []; allS = new Map(); sig = ''; sendKey = null;
+    clearPlots(); $('dynT').innerHTML = ''; setProg(null);
+}
+// the number of elements in the status text, before a run; above 1000 in red
+function showElements() {
+    const nE = rnd(mdl.Ltot / mdl.dL);
+    if (nE > 1000) setMsg(`${nE} elements: long run time`, RED); else setMsg(`${nE} elements`);
+}
+// the status after a model change: length limit, dL raised, L rounded
+function afterMsg() {
+    if (mdl.Ltot > Llm && (sel.some(n => lmList.includes(n)) || ui.EIopt)) setMsg(`length > ${Llm} m: LM1, LM2 not calibrated (EN 1991-2 6.1)`, RED);
+    else if (ui.nCap) setMsg(`dL raised: at most ${nElMax} elements`);
+    else if (ui.Lmoved) setMsg('L rounded to whole elements of dL');
+}
 
-function updateModel() {
+async function updateModel() {
     if (ui.busy) return false;
     if (!readInput()) return false;
     let s0 = 0; const xs = [0, ...inp.L.map(l => (s0 += l))];
@@ -255,16 +345,80 @@ function updateModel() {
     inp.bc = [];
     xs.forEach((x, i) => { inp.bc.push([x, 1, 0]); if (sup[i]) inp.bc.push([x, 2, 0]); });
     mdl.xs = xs; mdl.Ltot = s0; mdl.dL = s0 / BS.nElements(s0, inp.dL);
+    if (ui.EIopt) {                                              // EI from the deflection limit
+        const heavy = eiKey() !== ui.EIkey && BS.nElements(s0, inp.dL) >= nElWorker;
+        if (heavy) { progStart(); showElements(); setProg(0); }
+        let ok = false;
+        try { ok = await limitEI(); }
+        catch (e) { clearResults(); setMsg(e && e.message ? e.message : 'error', RED); console.error(e); if (heavy) progEnd(); return false; }
+        if (heavy) progEnd();
+        if (!ok) { clearResults(); setMsg('cancelled'); return false; }
+    }
 
     // a new model: new analysis; otherwise only the section has changed
-    const s = [inp.dL, inp.BK, inp.dx, inp.lanes, inp.dyn, inp.v, inp.L.join(' '), inp.EI.join(' '), sup.join('')].join('|');
+    const s = [inp.dL, inp.BK, inp.dx, inp.w, inp.gapL, inp.dyn, inp.v, inp.L.join(' '), inp.EI.join(' '), sup.join('')].join('|');
     const isNew = s !== sig;
     if (isNew) { sig = s; sectionGrid(); allS = new Map(); ILa = null; sendKey = null; setProg(null); }
     setSection(null);
     plotBeam();
     if ($('msg').style.color === 'rgb(179, 0, 0)') setMsg('');
-    if (isNew || sel.join() !== allN.join()) return analyse(isNew);
+    if (isNew || sel.join() !== allN.join()) return analyse(isNew).then(r => { afterMsg(); return r; });
     updatePlots();
+    afterMsg();
+    return true;
+}
+
+// EI from the deflection limit L/delta_V (TRVINFRA-00331 10.3.2.2.1, K230747 400, K164672 300;
+// for 400 also TRVINFRA-00227 K135526, frequent traffic load): LM1 at its frequent value with
+// the adjustment factors of TSFS 2018:57 and the lanes of w, Phi = 1; the largest downward
+// deflection in each span against L/delta_V of that span.  The deflection goes as 1/EI, so one
+// run at a reference EI scales to the EI that just meets the limit, rounded up to 3 digits; one
+// EI for all spans.  As Main_gui at every node: on a thinned grid the nodes either side of each
+// span's largest deflection are solved again.  Resolved with false when cancelled.
+const eiKey = () => [ui.EIopt, inp.L.join(' '), inp.dL, inp.w, sup.join('')].join('|');
+async function limitEI() {
+    const key = eiKey();
+    if (key !== ui.EIkey) {
+        const EI0 = 1e10, nEL = BS.nElements(mdl.Ltot, inp.dL), dl = mdl.Ltot / nEL, xs = mdl.xs;
+        const lim = parseFloat(ui.EIopt.slice(10));
+        const stp = Math.max(1, Math.ceil((nEL + 1) / Math.max(rnd(nMax / (nEL + 1)), 120)));   // as sectionGrid
+        let lanes = 1;
+        const delAt = async (idx, p0, p1) => {                   // downward deflection at the nodes idx (m); null: cancelled
+            const I0 = await calcIL({ L: inp.L, EI: EI0, dL: inp.dL, bc: inp.bc, xp: idx.map(i => i * dl) }, p0, p1);
+            if (!I0) return null;
+            const L0e = BS.loadEffect(I0, 'LM1', { w: inp.w, freq: true });
+            lanes = L0e.T.lanes;
+            return { x: idx.map(i => i * dl), d: Array.from(L0e.d[0], v => -v) };
+        };
+        const all = []; for (let i = 0; i <= nEL; i += stp) all.push(i);
+        if (all[all.length - 1] !== nEL) all.push(nEL);
+        const R = await delAt(all, 0, stp > 1 ? 0.5 : 1);
+        if (!R) return false;
+        const best = xs.slice(1).map((x1, i) => {               // per span: index into R of the largest
+            let b = -1, v = -Infinity;
+            R.x.forEach((x, j) => { if (x >= xs[i] - 1e-9 && x <= x1 + 1e-9 && R.d[j] > v) { v = R.d[j]; b = j; } });
+            return [v, all[b]];
+        });
+        if (stp > 1) {                                           // every node near each span's largest
+            const near = new Set();
+            best.forEach(([, i0]) => { for (let i = Math.max(0, i0 - stp); i <= Math.min(nEL, i0 + stp); i++) near.add(i); });
+            const R2 = await delAt([...near].sort((a, b) => a - b), 0.5, 1);
+            if (!R2) return false;
+            R2.x.forEach((x, j) => xs.slice(1).forEach((x1, i) => { if (x >= xs[i] - 1e-9 && x <= x1 + 1e-9 && R2.d[j] > best[i][0]) best[i][0] = R2.d[j]; }));
+        }
+        let need = 0, gov = 0;
+        best.forEach(([del], i) => { const r = del * lim / inp.L[i]; if (r > need) { need = r; gov = i; } });
+        let EI = EI0 * need;
+        const e = Math.floor(Math.log10(EI)) - 2;
+        EI = Math.ceil(Number((EI / 10 ** e).toPrecision(12))) * 10 ** e;   // 3 digits, on the safe side
+        EI = Number(EI.toPrecision(3));
+        ui.EIinfo = { opt: ui.EIopt, lim, gov: gov + 1, lanes, w: inp.w, EI };
+        ui.EIkey = key;
+    }
+    const I = ui.EIinfo;
+    inp.EI = [I.EI];
+    $('iEI').value = `${gfmt(I.EI / 1e9)}E9`; $('iEI').classList.add('auto');
+    $('iEI').title = `EI from L/delta = ${I.lim.toFixed(0)} (TRVINFRA-00331 10.3.2.2.1): frequent LM1 (psi_1 0.75/0.40), alpha of TSFS 2018:57, ${I.lanes} lane${I.lanes > 1 ? 's' : ''} (w = ${gfmt(I.w)} m); governs in span ${I.gov}; type a value to set EI by hand`;
     return true;
 }
 
@@ -290,8 +444,36 @@ function setSection(j) {
 const showMode = () => $('iShw').value;
 
 // ============================================================ analysis
-function buildIL() {
-    ILa = BS.influenceLines({ L: inp.L, EI: inp.EI.length === 1 ? inp.EI[0] : inp.EI, dL: inp.dL, bc: inp.bc, xp: mdl.xa });
+// influence lines in a worker of their own, so that the page stays live, with the progress
+// bar from p0 to p1 and Cancel (as BeamStat_rail); in the page below nElWorker elements, or
+// when no worker can be made (a page opened from file://).  Resolved with null when cancelled.
+const nElWorker = 400;
+let ilW = null;
+function calcIL(args, p0 = 0, p1 = 1) {
+    const inPage = () => BS.influenceLines(args);
+    if (BS.nElements(sum(args.L), args.dL) < nElWorker || window.__noWorkers === true) return Promise.resolve().then(inPage);
+    return new Promise((resolve, reject) => {
+        let over = false;
+        const end = () => { over = true; ui.abort = null; };
+        const fallback = () => { end(); if (ilW) ilW.terminate(); ilW = null; try { resolve(inPage()); } catch (e) { reject(e); } };
+        try { if (!ilW) ilW = new Worker(`solver.worker.js?v=${VER}`); } catch (e) { fallback(); return; }
+        ui.abort = () => { if (!over) { end(); ilW.terminate(); ilW = null; resolve(null); } };
+        ilW.onmessage = ev => {
+            if (over) return;
+            const r = ev.data;
+            if (r.prog !== undefined) { setProg(p0 + (p1 - p0) * r.prog); return; }
+            end();
+            if (r.ok) resolve(r.IL); else reject(new Error(r.message));
+        };
+        ilW.onerror = e => { if (!over) { e.preventDefault(); fallback(); } };
+        ilW.postMessage({ ilJob: args });
+    });
+}
+// the influence lines of the model; false when cancelled
+async function buildIL() {
+    const R = await calcIL({ L: inp.L, EI: inp.EI.length === 1 ? inp.EI[0] : inp.EI, dL: inp.dL, bc: inp.bc, xp: mdl.xa });
+    if (!R) return false;
+    ILa = R;
     const Ir = ILa, iv = ILa.bc.map((b, i) => (b[1] === 1 ? i : -1)).filter(i => i >= 0);
     const rng = A => { let a = Infinity, b = -Infinity; for (const c of A) for (let i = 0; i < c.length; i++) { if (c[i] < a) a = c[i]; if (c[i] > b) b = c[i]; } return [a, b]; };
     mdl.rng = { M: rng(Ir.M), V: rng(Ir.V), d: rng(Ir.d), r: rng(Ir.r), RF: rng(iv.map(i => Ir.RF[i])) };
@@ -300,13 +482,14 @@ function buildIL() {
     const ix = mdl.xa.map(x => rnd(x / mdl.dL));
     for (const v of mdl.spc) { const k = ix.indexOf(rnd(v / mdl.dL)); if (k >= 0) e.add(k); }
     mdl.env = [...e].sort((a, b) => a - b);
+    return true;
 }
 function ilAt(j) {
     const pick = (A, B) => { A.xp = j.map(i => ILa.xp[i]); for (const q of ['M', 'V', 'd', 'r']) A[q] = j.map(i => B[q][i]); return A; };
     const o = pick(Object.assign({}, ILa), ILa);
     return o;
 }
-const leOpt = () => ({ dyn: inp.dyn, v: inp.v, BK: inp.BK, dx: inp.dx, lanes: inp.lanes });
+const leOpt = () => ({ dyn: inp.dyn, v: inp.v, BK: inp.BK, dx: inp.dx, w: inp.w, gapL: inp.gapL });
 
 // ---- the worker pool: one load model per job; the influence lines once per bridge
 const nWorkers = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 1));   // more gain little, and each gets a copy of the lines
@@ -406,8 +589,17 @@ function mergeSel(N, R) {
 async function analyse(isNew) {
     progStart();
     const t0 = performance.now();
+    showElements();
     try {
-        if (isNew) { await nextFrame(); buildIL(); setSection(null); }
+        if (isNew) {
+            await nextFrame();
+            if (!(await buildIL())) {                            // cancelled: no model, a new update starts again
+                ILa = null; LE = null; allN = []; allR = []; sig = ''; sendKey = null;
+                clearPlots(); $('dynT').innerHTML = ''; msgDone(true, t0); progEnd();
+                return true;
+            }
+            setSection(null);
+        }
         const stopped = await calcEnv(false);
         if (stopped) { ui.busy = false; readInput(); ui.busy = true; }
         updatePlots();
@@ -429,11 +621,12 @@ function setHead() {
     $('idL').title = tip;
 }
 async function onRun() {
-    if (updateModel() === false) return;
+    if ((await updateModel()) === false) return;
     while (ui.busy) await new Promise(r => setTimeout(r, 20));
     if (!ILa) return;
     progStart();
     const t0 = performance.now();
+    showElements();
     try {
         const sel0 = sel.slice(), S0 = allS;
         allS = new Map();
@@ -450,18 +643,18 @@ async function onRun() {
     } catch (e) { setProg(null); setMsg(e && e.message ? e.message : 'error', RED); console.error(e); }
     progEnd();
 }
-function onReset() { mT.style.display = 'none'; setDefaults(); updateModel(); }
+function onReset() { mT.style.display = 'none'; $('mEI').style.display = 'none'; setDefaults(); updateModel(); }
 
 // the dynamic allowance and the determining length, above the model; one value for all
 // type vehicles
 function dynText() {
     if (!LE || !inp.dyn) return '';
-    const hasL = allN.includes('LM1');
-    if (hasL && allN.length === 1) return 'LM1: dynamic amplification included in the load values, $\\Phi$ = 1';
-    const s = dynOne(allR[allN.findIndex(n => n !== 'LM1')]);
-    return hasL ? s + ', LM1: 1' : s;
+    const nL = allN.filter(n => lmList.includes(n));             // LM1, LM2 ticked
+    if (nL.length === allN.length) return `${nL.join(', ')}: dynamic amplification included in the load values, $\\Phi$ = 1`;
+    const s = dynOne(allR[allN.findIndex(n => !lmList.includes(n))]);
+    return nL.length ? `${s}, ${nL.join(', ')}: 1` : s;
 }
-const dynOne = L => `$\\Phi = 1 + D$ = ${L.phi.toFixed(2)}, $D = (180 + 8(v - 10))/(20 + L)$ = ${L.D.toFixed(1)} %, $L$ = ${L.Lphi.toFixed(1)} m`;
+const dynOne = L => `$\\Phi$ = ${L.phi.toFixed(2)}, $D = (180 + 8(v - 10))/(20 + L)$ = ${L.D.toFixed(1)} %, $L$ = ${L.Lphi.toFixed(1)} m`;
 
 // units: symbol, unit and scale of a peak, the same of the envelope plots, influence line
 const UNIT = {
@@ -639,11 +832,12 @@ function drawLoad(ax, LEp, C, q, bare, nm) {
     ax.under = g => {
         PL.el('line', { x1: ax.X(-0.02 * Lt), y1: ax.Y(0), x2: ax.X(1.02 * Lt), y2: ax.Y(0), stroke: '#808080', 'stroke-width': 0.5 }, g);
         // the distributed load q: one polygon per stretch that carries load
+        let wm = 0; for (let i = 0; i < C.w.length; i++) if (C.w[i] > wm) wm = C.w[i];
         for (let i = 0; i < C.w.length; i++) {
             if (!(C.w[i] > 0)) continue;
             let j = i; while (j + 1 < C.w.length && C.w[j + 1] > 0) j++;
             let pts = '';
-            for (let k = i; k <= j; k++) pts += `${ax.X(x[k]).toFixed(2)},${ax.Y(C.w[k] * qH / C.q).toFixed(2)} `;
+            for (let k = i; k <= j; k++) pts += `${ax.X(x[k]).toFixed(2)},${ax.Y(C.w[k] * qH / wm).toFixed(2)} `;
             pts += `${ax.X(x[j]).toFixed(2)},${ax.Y(0).toFixed(2)} ${ax.X(x[i]).toFixed(2)},${ax.Y(0).toFixed(2)}`;
             PL.el('polygon', { points: pts, fill: co[1], 'fill-opacity': 0.25, stroke: co[1], 'stroke-width': 0.5 }, g);
             i = j;
@@ -827,19 +1021,29 @@ async function onExport() {
         const I0 = [['Quantity', 'Value', 'Unit'],
             ['Span lengths L', inp.L.map(gfmt).join(' '), 'm'],
             ['Flexural rigidity EI', inp.EI.map(expFmt).join(' '), 'Nm^2'],
+            ['EI from', eiSource(false), '-'],
             ['Element size dL', mdl.dL, 'm'],
             ['Clamped supports', sup.map((c, i) => (c ? i + 1 : 0)).filter(Boolean).join(' '), '-']];
-        if (allN.some(n => typList.includes(n))) {
-            const T0 = BS.vehicleModel('a', inp.BK);
+        const anyT = allN.some(n => typList.includes(n));
+        if (anyT || allN.includes('LM1') || ui.EIopt) I0.push(['Carriageway width w', inp.w, 'm']);
+        if (anyT) {
+            const T0 = BS.vehicleModel('a', inp.BK, null, inp.w);
             I0.push(['Bearing class', inp.BK, '-'], ['Type vehicle value A', T0.A / 1e3, 'kN'], ['Type vehicle value B', T0.B / 1e3, 'kN'],
+                ['Lanes of the type vehicles (K264958)', T0.lanes, '-'], ['Type vehicles times (1.0 and 0.8 in two lanes)', T0.fv, '-'],
+                ['Lanes with q only, 5 kN/m each', Math.max(T0.lanes - 2, 0), '-'],
                 ['Increment of the free axle spacings, 0 = the shortest only', inp.dx, 'm'],
-                ['Distributed load q, where unfavourable', 5, 'kN/m'], ['Free distance in j, k, l, at least', 45, 'm'],
-                ['Dynamic allowance applied, on the axle loads', inp.dyn ? 'on' : 'off', '-'], ['Speed v in formula (8-1)', inp.v, 'km/h']);
+                ['Distributed load q of a vehicle lane, where unfavourable', 5, 'kN/m'], ['Free distance in j, k, l, at least', inp.gapL, 'm'],
+                ['Dynamic allowance applied, on the axle loads, also on d and rotation', inp.dyn ? 'on' : 'off', '-'], ['Speed v in formula (8-1)', inp.v, 'km/h']);
         }
-        if (allN.includes('LM1')) I0.push(['Loaded notional lanes, LM1', inp.lanes, '-']);
+        if (allN.includes('LM1')) {
+            const [n1, , wr] = BS.lanes(inp.w);
+            I0.push(['Notional lanes, LM1', n1, '-'], ['Remaining area, LM1', wr, 'm'],
+                ['Adjustment factors aQ1 aQ2 aQ3 aq1 aqi aqr (TSFS 2018:57)', '0.9 0.9 0 0.8 1 1', '-']);
+        }
+        if (allN.includes('LM2')) I0.push(['Axle load LM2, beta_Q x 400 (beta_Q = aQ1)', 360, 'kN']);
         const hd = ['Load model', 'Phi (-)', 'D (%)', 'L (m)', 'v (km/h)', 'M_max (kNm)', 'x (m)', 'M_min (kNm)', 'x (m)',
                     'V_max (kN)', 'x (m)', 'd_max (mm)', 'x (m)', 'phi_max (mrad)', 'x (m)', 'R_max (kN)', 'x (m)'];
-        const T = allR.map((L, k) => [allN[k], round(L.phi, 3), round(L.D, 1), round(L.Lphi, 2), allN[k] === 'LM1' ? '-' : L.v,
+        const T = allR.map((L, k) => [allN[k], round(L.phi, 3), round(L.D, 1), round(L.Lphi, 2), allN[k].startsWith('LM') ? '-' : L.v,
             round(L.Mmax / 1e3, 0), L.xpeak.Mmax, round(L.Mmin / 1e3, 0), L.xpeak.Mmin,
             round(Math.abs(L.Vmax) / 1e3, 0), L.xpeak.Vmax, round(Math.abs(L.dmax) * 1e3, 1), L.xpeak.dmax,
             round(Math.abs(L.rmax) * 1e3, 1), L.xpeak.rmax, round(L.RFmax / 1e3, 0), L.xpeak.RFmax]);
@@ -870,6 +1074,15 @@ async function onExport() {
         const blob = XLSX.write([{ name: 'Results', rows: res }, { name: 'InfluenceLines', rows: il }, { name: 'Envelopes', rows: env }]);
         setMsg(await writeFile(f, blob) ? 'saved' : `could not write ${f.name}, downloaded instead`);
     } catch (e) { setMsg('export failed', RED); console.error(e); }
+}
+
+// where EI comes from: typed, or the deflection limit; for Export (tex = false) and the report
+function eiSource(tex) {
+    if (!ui.EIopt || !ui.EIinfo) return 'input';
+    const I = ui.EIinfo, pl = I.lanes > 1 ? 's' : '';
+    const rule = I.lim === 300 ? 'TRVINFRA-00331 K164672, bridges to the 1960 rules and earlier' : 'TRVINFRA-00331 K230747, bridges to the 1975 road traffic load rules and later';
+    if (!tex) return `L/delta = ${I.lim.toFixed(0)} under frequent LM1, ${I.lanes} lane${pl} (${rule})`;
+    return `$EI$ from the deflection limit $L/\\delta_\\mathrm{V}$ = ${I.lim.toFixed(0)} (${rule}), governing in span ${I.gov}: deflection from LM1 at its frequent value ($\\psi_1$ = 0.75 on the tandems, 0.40 on the UDL), adjustment factors of TSFS 2018:57, ${I.lanes} notional lane${pl}, one $EI$ for all spans, rounded up.`;
 }
 
 // ============================================================ print
@@ -973,7 +1186,7 @@ function critSvg(L1) {
 // that the axles have room.
 function vehicleSvg(name) {
     const hr = 150, svg = newSvg(700, hr), b = { x: 20, y: 2, w: 660, h: hr - 4 };
-    const T = BS.vehicleModel(name, inp.BK, null, inp.lanes);
+    const T = BS.vehicleModel(name, inp.BK, inp.gapL, inp.w);
     const xa = T.x.slice(), Pa = T.P.map(v => v / 1e3), sg = T.qseg.map(s => s.slice());
     let ge = null;
     if (T.g.length === 2) {
@@ -1065,11 +1278,21 @@ async function buildReport(full) {
     D.h1('Road Bridge Static Load Effects, 2D');
     D.h2('Basis');
     const anyT = allN.some(n => typList.includes(n));
+    const T0 = BS.vehicleModel('a', inp.BK, null, inp.w);
+    let lt = 'in one load lane';
+    if (T0.lanes > 1) {
+        lt = `in two of ${T0.lanes} load lanes 3 m wide on the carriageway of ${num(inp.w)} m (K264958), the one times 1.0, the other times 0.8, at the same place on the beam, so 1.8 times one vehicle with its $q$`;
+        if (T0.lanes === 3) lt += '; $q$ = 5 kN/m in the third lane, where unfavourable';
+        if (T0.lanes === 4) lt += '; $q$ = 5 kN/m in each of the other two lanes, where unfavourable';
+    }
+    const [n1, wl, wr] = BS.lanes(inp.w);
     D.ul(['Static load effects from influence lines: bending moment, shear force, displacement, end rotation and support reaction, over all positions of the load models and both directions.',
-          ...(anyT ? [`Type vehicles a–o of TRVINFRA-00331, Bilaga 1, in one load lane, without transverse distribution. ${inp.dx > 0 ? `Free spacings (≥) in steps of ${num(inp.dx)} m, the most unfavourable at each section.` : 'Free spacings (≥) at their shortest value only.'}`,
-                      'Distributed load $q$ = 5 kN/m (K224830) on the stretches of Bilaga 1, 2.5 m or more from the axles, where it is unfavourable. Free distance in j, k and l at least 45 m (K224831).',
-                      inp.dyn ? 'Dynamic allowance $D$, formula (8-1), on the axle loads only, not on $q$, displacement and rotation (K163750). Determining length $L$ from Bilaga 2, row 1a, 1b. No reduction for covering and fill (K223619).' : 'No dynamic allowance.'] : []),
-          ...(allN.includes('LM1') ? ['Load Model 1 of EN 1991-2:2024 (6.3.2), for the beam as a whole: tandem systems and UDL of Table 6.2 added over the loaded notional lanes, 3 m wide, all tandems at the same place, no axle left out, but one may stand beyond a bridge end; UDL on the unfavourable parts of the bridge. Dynamic amplification included, $\\Phi$ = 1. Adjustment factors $\\alpha$ = 1, no remaining area.'] : [])]);
+          ...(anyT ? [`Type vehicles a–o of TRVINFRA-00331, Bilaga 1, ${lt}, without transverse distribution. ${inp.dx > 0 ? `Free spacings (≥) in steps of ${num(inp.dx)} m, the most unfavourable at each section.` : 'Free spacings (≥) at their shortest value only.'}`,
+                      `Distributed load $q$ = 5 kN/m (K224830) on the stretches of Bilaga 1, 2.5 m or more from the axles, where it is unfavourable. Free distance in j, k and l at least ${gfmt(inp.gapL)} m (K224831).`,
+                      inp.dyn ? 'Dynamic allowance $D$, formula (8-1), on the axle loads only, not on $q$ (K163750), also on displacement and rotation (load combination B:c, K164471). Determining length $L$ from Bilaga 2, row 1a, 1b. No reduction for covering and fill (K223619).' : 'No dynamic allowance.'] : []),
+          ...(allN.includes('LM1') ? [`Load Model 1 of EN 1991-2:2024 (6.3.2), for the beam as a whole: tandem systems and UDL of Table 6.2 on the ${n1} notional lane${n1 > 1 ? 's' : ''} (${num(wl)} m wide) and the remaining area (${num(wr)} m) of a carriageway ${num(inp.w)} m wide (Table 6.1), all tandems at the same place, no axle left out, but one may stand beyond a bridge end; UDL on the unfavourable parts of the bridge. Dynamic amplification included, $\\Phi$ = 1. Adjustment factors of TSFS 2018:57 Table 11.1: $\\alpha_{Q1} = \\alpha_{Q2}$ = 0.9, $\\alpha_{Q3}$ = 0, $\\alpha_{q1}$ = 0.8, $\\alpha_{qi} = \\alpha_{qr}$ = 1.`] : []),
+          ...(allN.includes('LM2') ? ['Load Model 2 of EN 1991-2:2024 (6.3.3): one axle $\\beta_Q$ × 400 kN, $\\beta_Q = \\alpha_{Q1}$ = 0.9, so 360 kN, at any place. Dynamic amplification included, $\\Phi$ = 1; no additional factor near expansion joints.'] : []),
+          ...(ui.EIopt ? [eiSource(true)] : [])]);
 
     const stx = clamped.length ? `support${clamped.length > 1 ? 's' : ''} ${clamped.join(', ')} clamped, the others pinned` : 'all supports pinned';
     D.h2('Structural model');
@@ -1079,13 +1302,13 @@ async function buildReport(full) {
     markPeaks(showMode() !== 'Section', mm, sm);
     D.figure(sm, 'Model, dimensions in m.');
 
-    const rows = [['Spans, $L$', inp.L.map(gfmt).join(' + '), 'm'], ['Flexural rigidity, $EI$', inp.EI.map(sci).join(', '), 'Nm$^2$'],
+    const rows = [['Spans, $L$', inp.L.map(gfmt).join(' + '), 'm'], [`Flexural rigidity, $EI$${ui.EIopt ? ', from the deflection limit' : ''}`, inp.EI.map(sci).join(', '), 'Nm$^2$'],
                   ['Element length, d$L$', num(mdl.dL), 'm']];
+    if (anyT || allN.includes('LM1') || ui.EIopt) rows.push(['Carriageway width, $w$', num(inp.w), 'm']);
     if (anyT) {
-        const T0 = BS.vehicleModel('a', inp.BK);
         rows.push(['Bearing class', inp.BK, '–'], ['Type vehicle values, $A/B$', `${T0.A / 1e3}/${T0.B / 1e3}`, 'kN'], ['Increment of free axle spacings, $\\Delta x$', num(inp.dx), 'm']);
     }
-    if (allN.includes('LM1')) rows.push(['Loaded notional lanes, LM1', String(inp.lanes), '–']);
+    if (allN.includes('LM1')) rows.push(['Notional lanes, LM1', String(n1), '–']);
     if (inp.dyn && anyT) rows.push(['Speed in formula (8-1), $v$', gfmt(inp.v), 'km/h']);
     D.h2('Input');
     D.table('Bridge and traffic load.', ['', 'Value', 'Unit'], rows, ['', 'r', '']);
@@ -1117,10 +1340,12 @@ async function buildReport(full) {
             if (ui.stopReq) return null;
             const L1 = allR[k], t = `Load model ${allN[k]} (${groupOf(allN[k])})`;
             D.h2(t, { newPage: true });
-            D.figure(vehicleSvg(allN[k]), `Load model, axle loads in kN${allN[k] === 'LM1' ? '' : ' without $D$'}, dimensions in m.`);
+            D.figure(vehicleSvg(allN[k]), `Load model, axle loads in kN${allN[k].startsWith('LM') ? '' : ' without $D$'}, dimensions in m.`);
             let fx;
-            if (allN[k] === 'LM1') fx = `Dynamic amplification included in the load values, $\\Phi$ = 1. ${inp.lanes} loaded notional lane${inp.lanes > 1 ? 's' : ''}.`;
+            if (allN[k] === 'LM1') fx = `Dynamic amplification included in the load values, $\\Phi$ = 1. ${L1.T.lanes} notional lane${L1.T.lanes > 1 ? 's' : ''} and the remaining area, all lanes together in the figure.`;
+            else if (allN[k] === 'LM2') fx = 'Dynamic amplification included in the load value, $\\Phi$ = 1.';
             else fx = inp.dyn ? (dynOne(L1) + '.') : `No dynamic allowance applied, $L$ = ${L1.Lphi.toFixed(1)} m.`;
+            if (!allN[k].startsWith('LM') && L1.T.fv > 1) fx += ` Axle loads and $q$ of the two vehicle lanes together (1.0 + 0.8) in the figure${L1.T.qAll > 0 ? `, $q$ = ${gfmt(L1.T.qAll / 1e3)} kN/m of the other lanes not drawn` : ''}.`;
             D.p(fx);
             D.figure(critSvg(L1), 'Influence lines and governing arrangement at the critical sections.');
         }

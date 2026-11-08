@@ -1,10 +1,12 @@
 /* beamstat2d.js --------------------------------------------------------------
    Static load effects of road vehicles on a 2D beam, by influence lines: a port of
-   BeamStat2D.m in BeamStat_road (2026-11-05); see its header for the method and the models.
+   BeamStat2D.m in BeamStat_road (2026-11-07); see its header for the method and the models.
 
-   BS.influenceLines(inp)         inp: L [m], EI (one or per span), dL, bc [[x, dir, K]], xp
-   BS.loadEffect(IL, type, opt)   type: a to o, LM1; opt: dyn, v, BK, dx, lanes, gapL, both
-   BS.vehicleModel(type, BK, gapL, lanes)   load model definition
+   BS.influenceLines(inp)         inp: L [m], EI (one or per span), dL, bc [[x, dir, K]], xp,
+                                  onProgress (optional, fraction done)
+   BS.loadEffect(IL, type, opt)   type: a to o, LM1, LM2; opt: dyn, v, BK, dx, w, freq, gapL, both
+   BS.vehicleModel(type, BK, gapL, w, freq)   load model definition
+   BS.lanes(w)                    [n1, wl, wr], notional lanes of LM1, EN 1991-2:2024 Table 6.1
 
    Influence lines: arrays of columns, IL.M[section][load position], Float64Array.
    Envelopes: LE.M = [lo, hi], per section.
@@ -94,22 +96,39 @@ BS.influenceLines = function (inp) {
     const M = col(), V = col(), d = col(), r = col();
     const RF = bc.map(() => new Float64Array(n));
 
-    // unit downward load at every node
-    const D = new Float64Array(nDof), y = new Float64Array(nf);
+    // unit downward load at every node.  Two steps of iterative refinement: the round-off of
+    // the band Cholesky grows fast with the number of elements (midspan moment 3e-5 at 1300
+    // elements, 6e-3 at 5000), after refinement below 1e-6 (as BeamStat_rail, 2026-11-05)
+    const D = new Float64Array(nDof), y = new Float64Array(nf), res = new Float64Array(nf);
+    const solve = (z, i0) => {
+        for (let i = i0; i < nf; i++) {
+            let v = z[i];
+            for (let k = 1; k <= hb && i - k >= 0; k++) v -= Lc[i * (hb + 1) + k] * z[i - k];
+            z[i] = v / Lc[i * (hb + 1)];
+        }
+        for (let i = nf - 1; i >= 0; i--) {
+            let v = z[i];
+            for (let k = 1; k <= hb && i + k < nf; k++) v -= Lc[(i + k) * (hb + 1) + k] * z[i + k];
+            z[i] = v / Lc[i * (hb + 1)];
+        }
+    };
+    const prog = inp.onProgress, pStep = Math.max(1, Math.ceil(n / 100));   // optional callback, fraction done
     for (let c = 0; c < n; c++) {
+        if (prog && c % pStep === 0) prog(c / n);
         y.fill(0);
         const k0 = map[2 * c];
         if (k0 >= 0) {
             y[k0] = -1;
-            for (let i = k0; i < nf; i++) {
-                let v = y[i];
-                for (let k = 1; k <= hb && i - k >= 0; k++) v -= Lc[i * (hb + 1) + k] * y[i - k];
-                y[i] = v / Lc[i * (hb + 1)];
-            }
-            for (let i = nf - 1; i >= 0; i--) {
-                let v = y[i];
-                for (let k = 1; k <= hb && i + k < nf; k++) v -= Lc[(i + k) * (hb + 1) + k] * y[i + k];
-                y[i] = v / Lc[i * (hb + 1)];
+            solve(y, k0);
+            for (let it = 0; it < 2; it++) {
+                for (let i = 0; i < nf; i++) {                   // residual F - K y of the free dofs
+                    const g = fd[i];
+                    let s = 0;
+                    for (let k = -hb; k <= hb; k++) { const q = g + k; if (q >= 0 && q < nDof && map[q] >= 0) s += K[g * (2 * hb + 1) + k + hb] * y[map[q]]; }
+                    res[i] = (i === k0 ? -1 : 0) - s;
+                }
+                solve(res, 0);
+                for (let i = 0; i < nf; i++) y[i] += res[i];
             }
         }
         D.fill(0);
@@ -162,8 +181,9 @@ BS.determiningLength = function (Ls) {
 BS.dynAllowance = (L, v) => Math.min((180 + 8 * (v - 10)) / (20 + L), 35);
 
 BS.loadEffect = function (IL, type, opt0) {
-    const opt = Object.assign({ v: 80, dyn: true, both: true, Lphi: null, BK: 'BK1', gapL: 45, dx: 0.2, lanes: 1 }, opt0 || {});
-    const T = BS.vehicleModel(type, opt.BK, opt.gapL, opt.lanes);
+    const opt = Object.assign({ v: 80, dyn: true, both: true, Lphi: null, BK: 'BK1', gapL: 45, dx: 0.2, w: 3, freq: false }, opt0 || {});
+    if (opt0 && opt0.w == null && opt0.lanes != null) opt.w = 3 * opt0.lanes;   // the earlier input: lanes of LM1
+    const T = BS.vehicleModel(type, opt.BK, opt.gapL, opt.w, opt.freq);
     const x = IL.x, dL = IL.dL, n = x.length, Gr = toGrid(T, dL, opt.dx), G0 = Gr.G;
 
     // determining length and dynamic allowance, one value for the bridge
@@ -172,13 +192,13 @@ BS.loadEffect = function (IL, type, opt0) {
     if (!Ls.length) Ls.push(x[n - 1] - x[0]);
     const Lphi = opt.Lphi === null ? BS.determiningLength(Ls) : opt.Lphi;
     let Dp = BS.dynAllowance(Lphi, opt.v), phi = 1;
-    if (opt.dyn && T.name !== 'LM1') phi = 1 + Dp / 100; else Dp = 0;   // LM1: included in the loads
+    if (opt.dyn && !T.name.startsWith('LM')) phi = 1 + Dp / 100; else Dp = 0;   // LM1, LM2: included in the loads
 
-    // every quantity, in one or both directions; d and r without D
+    // every quantity, in one or both directions; D also on d and r (B:c)
     const Gd = [G0]; if (opt.both) Gd.push(mirror(G0));
     const Q = ['M', 'V', 'd', 'r', 'RF'], out = {}, dr = {};
     for (const q of Q) {
-        const f = (q === 'd' || q === 'r') ? 1 : phi, cols = IL[q], m = cols.length;
+        const f = phi, cols = IL[q], m = cols.length;
         const lo = new Float64Array(m), hi = new Float64Array(m), dlo = new Uint8Array(m).fill(1), dhi = new Uint8Array(m).fill(1);
         for (let j = 0; j < m; j++) {
             lo[j] = sweep(cols[j], dL, n, Gd[0], f, -1);
@@ -215,7 +235,7 @@ BS.loadEffect = function (IL, type, opt0) {
             v = E[sd][k];
         }
         out[nm] = v; out.xpeak[nm] = xq[k];
-        const f = (qn === 'd' || qn === 'r') ? 1 : phi, dk = dr[qn][sd][k];
+        const f = phi, dk = dr[qn][sd][k];
         const C = config(IL[qn][k], x, dL, n, Gd[dk - 1], f, 2 * sd - 1);
         C.name = nm; C.quant = qn; C.x = xq[k]; C.dir = dk;
         C.h = IL[qn][k]; C.val = v; C.q = T.q;
@@ -249,6 +269,10 @@ function field(z, C, g, phi, G, kg, n) {
         const ka = k[a], pa = P[a] * phi, r0 = i0 + ka;
         const b0 = Math.max(0, -r0), b1 = Math.min(nI, n - r0);
         for (let b = b0; b < b1; b++) F[b] += pa * z[r0 + b];
+    }
+    if (G.qAll > 0 && kg === 1) {                                // the lanes without a vehicle: whole bridge
+        const v = G.qAll * C[n - 1];
+        for (let b = 0; b < nI; b++) F[b] += v;
     }
     if (G.qf === 3) {
         const v = G.q * C[n - 1];
@@ -326,7 +350,8 @@ function config(h, x, dL, n, G, phi, s) {
             if (on && s * h[i] > 0) w[i] = G.q;
         }
     }
-    const o = { sum: s * sumv, xa: [], Pa: [], gap: gp, w };
+    if (G.qAll > 0) for (let i = 0; i < n; i++) if (s * h[i] > 0) w[i] += G.qAll;
+    const o = { sum: s * sumv, xa: [], Pa: [], gap: gp, w, wAll: G.qAll };
     xa.forEach((v, i) => { if (v > x[0] - 1e-9 && v < x[n - 1] + 1e-9) { o.xa.push(v); o.Pa.push(Pa[i]); } });
     return o;
 }
@@ -334,7 +359,7 @@ function config(h, x, dL, n, G, phi, s) {
 // the vehicle on the element grid: axle offsets, free distance, its step and the q margin
 // in nodes
 function toGrid(T, dL, dx) {
-    const G = { q: T.q, qf: T.qf, step: dx > 0 ? Math.max(rnd(Math.max(dx, 0.1) / dL), 1) : 0, g: [] };
+    const G = { q: T.q, qf: T.qf, qAll: T.qAll, step: dx > 0 ? Math.max(rnd(Math.max(dx, 0.1) / dL), 1) : 0, g: [] };
     let snap = 0;
     for (const g of T.g) {
         const k = g.off.map(v => rnd(v / dL));
@@ -356,17 +381,36 @@ function mirror(G) {
 }
 
 // ================================================== load models
-// Type vehicles of TRVINFRA-00331 v3.0 Bilaga 1 and LM1 of EN 1991-2:2024; see the header of
-// BeamStat2D.m.  A/B fitted to the limits of Lasta lagligt 2026.
+// Type vehicles of TRVINFRA-00331 v3.0 Bilaga 1 and LM1, LM2 of EN 1991-2:2024; see the header
+// of BeamStat2D.m.  A/B fitted to the limits of Lasta lagligt 2026.
 const AB = { BK1: [120, 180], BK2: [100, 160], BK3: [80, 120], BK4: [120, 180] };
-BS.vehicleModel = function (type, BK, gapL, lanes) {
+// the number and width (m) of the notional lanes and the width of the remaining area (m) on a
+// carriageway of width w (m), EN 1991-2:2024 Table 6.1; below 3 m one lane as wide as w
+BS.lanes = function (w) {
+    if (w < 5.4) return [1, Math.min(w, 3), Math.max(w - 3, 0)];
+    if (w < 6) return [2, w / 2, 0];
+    const n1 = Math.floor(w / 3 + 1e-9);
+    return [n1, 3, w - 3 * n1];
+};
+BS.vehicleModel = function (type, BK, gapL, w, freq) {
     BK = BK === undefined || BK === null ? 'BK1' : BK;
     gapL = gapL === undefined || gapL === null ? 45 : gapL;
-    lanes = lanes === undefined || lanes === null ? 1 : lanes;
-    if (String(type).toUpperCase() === 'LM1') {                  // Table 6.2, notional lanes 3 m wide
-        const Qi = [300, 200, 100], Q = sum(Qi.slice(0, Math.min(lanes, 3))) * 1e3;
-        return { name: 'LM1', A: NaN, B: NaN, BK: '', lanes, g: [{ off: [0, 1.2], P: [Q, Q] }], dmin: 0, qf: 3, qm: 0,
-                 q: 3 * (9 + 2.5 * (lanes - 1)) * 1e3, x: [0, 1.2], P: [Q, Q], grp: [1, 1], Ltot: 1.2, qseg: [[-Infinity, Infinity]] };
+    w = w === undefined || w === null ? 3 : w;
+    const aQ = [0.9, 0.9, 0], aq1 = 0.8, aqi = 1, aqr = 1;       // TSFS 2018:57 Table 11.1
+    const ty = String(type).toUpperCase();
+    if (ty === 'LM1') {                                          // Table 6.2 on the lanes of Table 6.1
+        const [n1, wl, wr] = BS.lanes(w), Qi = [300, 200, 100];
+        let Q = 0; for (let i = 0; i < Math.min(n1, 3); i++) Q += aQ[i] * Qi[i];
+        Q *= 1e3;
+        let q = (aq1 * 9 * wl + aqi * 2.5 * wl * (n1 - 1) + aqr * 2.5 * wr) * 1e3;
+        if (freq) { Q *= 0.75; q *= 0.40; }                      // psi_1, EN 1990 Table A2.1, gr1a
+        return { name: 'LM1', A: NaN, B: NaN, BK: '', lanes: n1, fv: 1, w, g: [{ off: [0, 1.2], P: [Q, Q] }], dmin: 0, qf: 3, qm: 0,
+                 q, qAll: 0, x: [0, 1.2], P: [Q, Q], grp: [1, 1], Ltot: 1.2, qseg: [[-Infinity, Infinity]] };
+    }
+    if (ty === 'LM2') {                                          // one axle beta_Q*400 kN, beta_Q = alpha_Q1
+        const P = aQ[0] * 400e3;
+        return { name: 'LM2', A: NaN, B: NaN, BK: '', lanes: 1, fv: 1, w, g: [{ off: [0], P: [P] }], dmin: 0, qf: 0, qm: 0,
+                 q: 0, qAll: 0, x: [0], P: [P], grp: [1], Ltot: 0, qseg: [] };
     }
     const ab = Array.isArray(BK) ? BK.map(v => v / 1e3) : AB[String(BK).toUpperCase()];
     if (!ab) throw new Error(`unknown bearing class '${BK}' (BK1 to BK4)`);
@@ -393,10 +437,17 @@ BS.vehicleModel = function (type, BK, gapL, lanes) {
         o: [[0, 3.4, 4.7, 10.4, 11.7, 13, 17.8, 19.1, 25.6, 27.4], [.33, .445, .445, .39, .39, .39, .415, .415, .445, .445], 0, null, null, 1]
     };
     const name = String(type).toLowerCase(), V = Vh[name];
-    if (!V) throw new Error(`unknown type vehicle '${type}' (a to o, LM1)`);
+    if (!V) throw new Error(`unknown type vehicle '${type}' (a to o, LM1, LM2)`);
     const T = { name, A, B, BK: Array.isArray(BK) ? '' : String(BK).toUpperCase(), lanes: 1, dmin: V[2], qf: V[5], q: V[5] > 0 ? 5e3 : 0, qm: 2.5 };
     T.g = [{ off: V[0].slice(), P: name === 'a' ? [A] : V[1].map(v => B * v) }];
     if (V[3]) T.g.push({ off: V[3].slice(), P: V[4].map(v => B * v) });
+    // lanes, K264958: 3 m lanes in w, 1 to 4; vehicles in two of them (1.0 and 0.8)
+    T.lanes = Math.min(Math.max(Math.floor(w / 3 + 1e-9), 1), 4);
+    T.fv = T.lanes >= 2 ? 1.8 : 1;
+    T.w = w;
+    T.g.forEach(g => { g.P = g.P.map(v => T.fv * v); });
+    T.q = T.fv * T.q;
+    T.qAll = 5e3 * Math.max(T.lanes - 2, 0);
     // all the axles at the smallest free distance, for the drawings
     const x1 = T.g[0].off, e1 = x1[x1.length - 1];
     if (T.g.length === 2) {

@@ -26,7 +26,7 @@ PL.el = function (tag, attrs, parent) {
 // ------------------------------------------------------------ LaTeX subset
 // Runs {t, it, lvl}: italic inside $...$ for letters, \mathrm{} upright,
 // _ and ^ (one character or {...}) one level down/up, a few symbols.
-const SYM = { '\\varphi': 'φ', '\\phi': 'ϕ', '\\zeta': 'ζ', '\\alpha': 'α', '\\beta': 'β',
+const SYM = { '\\varphi': 'φ', '\\phi': 'ϕ', '\\zeta': 'ζ', '\\alpha': 'α', '\\beta': 'β', '\\delta': 'δ', '\\psi': 'ψ',
               '\\Phi': 'Φ', '\\Delta': 'Δ', '\\max': 'max', '\\xi': 'ξ', '\\cdot': '·', '\\%': '%', '\\,': ' ' };
 PL.texRuns = function (s) {
     const runs = [];
