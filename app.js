@@ -9,7 +9,7 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-09a';
+const VER = '2026-11-09b';
 
 // ---------------------------------------------------------- default input
 const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', w: '3', gap: '45', v: '80', shw: 'Section', EIopt: 'L/delta = 400' };   // EIopt '' = EI typed
@@ -930,7 +930,7 @@ function ilLE() {
     return LEx;
 }
 // the envelopes along the beam: one load model; several: over them, with the governing one
-function envAxis(ax, q, xe, hi, lo, E1, E2, Lr, txt) {
+function envAxis(ax, q, xe, hi, lo, Lr, txt) {
     const U = UNIT[q];
     let vx = -Infinity, ix = 0, vn = Infinity, inn = 0;
     hi.forEach((v, i) => { if (v > vx) { vx = v; ix = i; } });
@@ -941,7 +941,7 @@ function envAxis(ax, q, xe, hi, lo, E1, E2, Lr, txt) {
     const Lt = mdl.Ltot;
     ax.under = g => {
         PL.el('line', { x1: ax.X(-0.02 * Lt), y1: ax.Y(0), x2: ax.X(1.02 * Lt), y2: ax.Y(0), stroke: '#808080', 'stroke-width': 0.5 }, g);
-        if (q !== 'RF' && E1) {
+        if (q !== 'RF') {
             let pts = '';
             xe.forEach((v, i) => { pts += `${ax.X(v).toFixed(2)},${ax.Y(hi[i]).toFixed(2)} `; });
             for (let i = xe.length - 1; i >= 0; i--) pts += `${ax.X(xe[i]).toFixed(2)},${ax.Y(lo[i]).toFixed(2)} `;
@@ -979,7 +979,7 @@ function drawEnv(LEp, set) {
             const iv = LEp.supDir.map((d, i) => (d === 1 ? i : -1)).filter(i => i >= 0);
             xe = iv.map(i => LEp.supX[i]); hi = iv.map(i => LEp[q][1][i] / U.sE); lo = iv.map(i => LEp[q][0][i] / U.sE);
         }
-        envAxis(A[k], q, xe, hi, lo, true, null, LEp, (vx, xx, vn, xn) =>
+        envAxis(A[k], q, xe, hi, lo, LEp, (vx, xx, vn, xn) =>
             `$${U.sy}_\\mathrm{max}$ = ${fmtVal(q, vx)} at $x$ = ${xx.toFixed(1)} m, $${U.sy}_\\mathrm{min}$ = ${fmtVal(q, vn)} at $x$ = ${xn.toFixed(1)} m`);
         A[k].draw();
     });
@@ -992,7 +992,7 @@ function drawAll(set) {
         if (q === 'RF') { iv = Lr.supDir.map((d, i) => (d === 1 ? i : -1)).filter(i => i >= 0); xe = iv.map(i => Lr.supX[i]); }
         const hi = iv.map(i => Math.max(...allR.map(L => L[q][1][i])) / U.sE), lo = iv.map(i => Math.min(...allR.map(L => L[q][0][i])) / U.sE);
         const tr = (i, side, val) => allN[allR.findIndex(L => L[q][side][iv[i]] / U.sE === val)];
-        envAxis(A[k], q, xe, hi, lo, false, null, Lr, (vx, xx, vn, xn, ix, inn) =>
+        envAxis(A[k], q, xe, hi, lo, Lr, (vx, xx, vn, xn, ix, inn) =>
             `$${U.sy}_\\mathrm{max}$ = ${fmtVal(q, vx)} (${tr(ix, 1, hi[ix])}), $${U.sy}_\\mathrm{min}$ = ${fmtVal(q, vn)} (${tr(inn, 0, lo[inn])})`);
         A[k].draw();
     });
