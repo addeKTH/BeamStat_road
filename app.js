@@ -9,7 +9,7 @@
 (function () {
 'use strict';
 const $ = id => document.getElementById(id);
-const VER = '2026-11-08a';
+const VER = '2026-11-09a';
 
 // ---------------------------------------------------------- default input
 const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', w: '3', gap: '45', v: '80', shw: 'Section', EIopt: 'L/delta = 400' };   // EIopt '' = EI typed
@@ -17,7 +17,8 @@ const def = { L: '20 20', EI: '35E9', dL: '0.1', BK: 'BK1', dx: '0.2', w: '3', g
 const EIopts = ['L/delta = 400', 'L/delta = 300'];
 const EIlabel = o => `<i>L</i>/<i>δ</i><sub>V</sub> = ${o.slice(10)}   (${o.endsWith('400') ? '1975 rules and later' : '1960 rules and earlier'})`;
 // input limits, as Main_gui: element size, elements, total length (m), carriageway (m), LM length (m)
-const dLmin = 0.01, nElMax = 5000, Lmin = 1, Lmax = 2000, wMax = 60, Llm = 200;
+const dLmin = 0.01, nElMax = 5000, Lmin = 1, Lmax = 2000, wMin = 3, wMax = 40, Llm = 200;
+const nLaneMax = 6;   // most lanes in the menu of w; a wider carriageway is typed
 const shwList = ['Section', 'Critical', 'Envelope'], bkList = ['BK1', 'BK2', 'BK3', 'BK4'], gapList = ['45', '25'];
 const typList = 'abcdefghijklmno'.split('');                          // TRVINFRA-00331 Bilaga 1
 const lmList = ['LM1', 'LM2'];                                        // EN 1991-2:2024
@@ -166,7 +167,22 @@ $('bEI').addEventListener('click', ev => {
         m.appendChild(d);
     });
     m.style.left = $('bEI').offsetLeft + 'px'; m.style.top = ($('bEI').offsetTop + 22) + 'px'; m.style.display = 'block';
-    $('mLoad').style.display = 'none';
+    $('mLoad').style.display = 'none'; $('mW').style.display = 'none';
+});
+// the lanes menu of w: the width of that many lanes 3 m wide
+$('bW').addEventListener('click', ev => {
+    ev.stopPropagation();
+    const m = $('mW'); m.innerHTML = '';
+    const wNow = Number($('iW').value.trim() || NaN);
+    for (let k = 1; k <= nLaneMax; k++) {
+        const d = document.createElement('div');
+        d.textContent = `${k} lane${k > 1 ? 's' : ''}   (w = ${3 * k} m)`;
+        if (wNow === 3 * k) d.className = 'chk';
+        d.addEventListener('click', e => { e.stopPropagation(); m.style.display = 'none'; $('iW').value = String(3 * k); updateModel(); });
+        m.appendChild(d);
+    }
+    m.style.left = $('iW').offsetLeft + 'px'; m.style.top = ($('iW').offsetTop + 23) + 'px'; m.style.display = 'block';
+    $('mLoad').style.display = 'none'; $('mEI').style.display = 'none';
 });
 $('idL').addEventListener('change', e => { ui.dLset = e.target.value.trim(); updateModel(); });
 $('iXp').addEventListener('change', () => { xpAuto = false; updateModel(); });
@@ -203,14 +219,14 @@ mT.addEventListener('click', ev => ev.stopPropagation());
 const toggleLoad = ev => {
     ev.stopPropagation();
     if (ui.busy) return;
-    $('mEI').style.display = 'none';
+    $('mEI').style.display = 'none'; $('mW').style.display = 'none';
     if (mT.style.display === 'block') { mT.style.display = 'none'; return; }
     mT.style.left = $('iLoad').offsetLeft + 'px'; mT.style.top = ($('iLoad').offsetTop + 23) + 'px'; mT.style.display = 'block';
 };
 $('iLoad').addEventListener('click', toggleLoad);
 $('bLoad').addEventListener('click', toggleLoad);
 document.addEventListener('click', () => {
-    mT.style.display = 'none'; $('mEI').style.display = 'none';
+    mT.style.display = 'none'; $('mEI').style.display = 'none'; $('mW').style.display = 'none';
     if (ui.supJust) { ui.supJust = false; return; }              // the click that opened the support menu
     removeSupSel();
 });
@@ -265,18 +281,31 @@ function readInput() {
     const onT = sel.some(n => typList.includes(n)), onV = inp.dyn && onT;
     const onW = sel.includes('LM1') || onT || !!ui.EIopt, onG = sel.some(n => ['j', 'k', 'l'].includes(n));   // the lanes matter; the gap
     const show = (ids, on) => ids.forEach(id => { $(id).style.display = on ? '' : 'none'; });
-    show(['iBK', 'lBK', 'iDx', 'lDx'], onT); show(['iV', 'lV'], onV); show(['iW', 'lW'], onW); show(['iGap', 'lGap'], onG);
+    show(['iBK', 'lBK', 'iDx', 'lDx'], onT); show(['iV', 'lV'], onV); show(['iW', 'bW', 'lW', 'nW'], onW); show(['iGap', 'lGap'], onG);
     const yW = (onT ? 164 : 112) + 'px';                         // no type vehicle: w under the load model
-    $('iW').style.top = yW; $('lW').style.top = yW;
+    $('iW').style.top = yW; $('bW').style.top = yW; $('lW').style.top = yW;
+    // the lanes: to the left of w on the lowest row, else below the box
+    const nW = $('nW');
+    if (onT) { nW.style.left = ''; nW.style.right = '356px'; nW.style.top = yW; nW.style.textAlign = 'right'; }
+    else { nW.style.right = ''; nW.style.left = '252px'; nW.style.top = '138px'; nW.style.textAlign = 'left'; }
     inp.gapL = Number($('iGap').value);
-    const goodW = v => v !== null && v > 0 && v <= wMax;
+    const goodW = v => v !== null && v >= wMin && v <= wMax;
     inp.w = scalar($('iW').value);
+    if (inp.w !== null) {                                        // to 0.1 m, within the limits
+        const wRnd = Math.min(Math.max(Math.round(10 * inp.w) / 10, wMin), wMax);
+        if (wRnd !== inp.w) $('iW').value = String(wRnd);
+        inp.w = wRnd;
+    }
     if (!onW && !goodW(inp.w)) inp.w = Number(def.w);
     if (goodW(inp.w)) {
-        const [nLM, , wrLM] = BS.lanes(inp.w), nTV = Math.min(Math.max(Math.floor(inp.w / 3 + 1e-9), 1), 4);
-        $('iW').title = `Carriageway width: LM1 ${nLM} notional lane${nLM > 1 ? 's' : ''} and a remaining area of ${Number(wrLM.toPrecision(3))} m ` +
+        const [nLM, wlLM, wrLM] = BS.lanes(inp.w), nTV = Math.min(Math.max(Math.floor(inp.w / 3 + 1e-9), 1), 4);
+        nW.textContent = laneText(nLM, wlLM, wrLM, nTV, sel.includes('LM1') || !!ui.EIopt, onT); nW.style.color = '';
+        $('iW').title = `Carriageway width, ${wMin} to ${wMax} m: LM1 ${nLM} notional lane${nLM > 1 ? 's' : ''} and a remaining area of ${Number(wrLM.toPrecision(3))} m ` +
             `(EN 1991-2:2024 Table 6.1); type vehicles ${nTV} lane${nTV > 1 ? 's' : ''}, vehicles in ${Math.min(nTV, 2)} (times 1.0${nTV >= 2 ? ' and 0.8' : ''}), ` +
             `q = 5 kN/m in ${Math.max(nTV - 2, 0)} (TRVINFRA-00331 K264958)`;
+    } else {
+        $('iW').title = `Carriageway width, ${wMin} to ${wMax} m`;
+        nW.innerHTML = `<i>w</i> = ${wMin} to ${wMax} m`; nW.style.color = '#b30000';
     }
     inp.v = scalar($('iV').value);
     if (!onV && !(inp.v !== null && inp.v > 0)) inp.v = Number(def.v);
@@ -298,6 +327,17 @@ function readInput() {
     return inputOK;
 }
 const sum = a => a.reduce((p, c) => p + c, 0);
+// the lanes of w in words: LM1 where LM1 counts, with its remaining area or its narrower
+// lanes; the type vehicles where they count and have another number of lanes
+function laneText(n1, wl, wr, nT, onL, onT) {
+    const lanes = n => `${n} lane${n > 1 ? 's' : ''}`, g3 = v => Number(v.toPrecision(4));
+    if (!onL) return lanes(nT);
+    let s = lanes(n1);
+    if (wl < 3) s += ` ${g3(wl)} m`;
+    if (wr > 1e-6) s += ` + ${g3(wr)} m`;
+    if (onT && nT !== n1) s += `, type veh. ${nT}`;
+    return s;
+}
 // finite positive numbers, at least one (parseVec gives finite numbers or null)
 const goodVec = v => Array.isArray(v) && v.length > 0 && v.every(x => isFinite(x) && x > 0);
 // The supports stand on nodes: each span is rounded to a whole number of elements, and
@@ -643,7 +683,7 @@ async function onRun() {
     } catch (e) { setProg(null); setMsg(e && e.message ? e.message : 'error', RED); console.error(e); }
     progEnd();
 }
-function onReset() { mT.style.display = 'none'; $('mEI').style.display = 'none'; setDefaults(); updateModel(); }
+function onReset() { mT.style.display = 'none'; $('mEI').style.display = 'none'; $('mW').style.display = 'none'; setDefaults(); updateModel(); }
 
 // the dynamic allowance and the determining length, above the model; one value for all
 // type vehicles

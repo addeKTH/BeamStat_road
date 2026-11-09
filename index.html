@@ -91,26 +91,28 @@
   <div class="lbl" style="left:14px; top:138px">d<i>L</i> (m)</div>
   <input class="f" id="idL" style="left:82px; top:138px; width:80px">
 
-  <div class="lbl" style="left:170px; top:86px">Load model</div>
-  <input class="f ro" id="iLoad" readonly style="left:238px; top:86px; width:76px">
-  <div class="mbtn" id="bLoad" style="left:314px; top:86px" title="Tick the load models">&#9660;</div>
-  <div class="lbl" id="lBK" style="left:170px; top:112px">BK</div>
-  <select class="f" id="iBK" style="left:238px; top:112px; width:94px; font-size:11px"></select>
-  <div class="lbl" id="lDx" style="left:170px; top:138px"><i>Δx</i> (m)</div>
-  <input class="f" id="iDx" style="left:238px; top:138px; width:94px" title="Increment of the axle spacings marked >= in Bilaga 1, up to the rear group clear of the bridge; 0 = the shortest spacing only; at least 0.1 otherwise">
-  <div class="lbl" id="lW" style="left:170px; top:164px"><i>w</i> (m)</div>
-  <input class="f" id="iW" style="left:238px; top:164px; width:94px">
+  <div class="lbl" style="left:184px; top:86px">Load model</div>
+  <input class="f ro" id="iLoad" readonly style="left:252px; top:86px; width:76px">
+  <div class="mbtn" id="bLoad" style="left:328px; top:86px" title="Tick the load models">&#9660;</div>
+  <div class="lbl" id="lBK" style="left:184px; top:112px">BK</div>
+  <select class="f" id="iBK" style="left:252px; top:112px; width:94px; font-size:11px"></select>
+  <div class="lbl" id="lDx" style="left:184px; top:138px"><i>Δx</i> (m)</div>
+  <input class="f" id="iDx" style="left:252px; top:138px; width:94px" title="Increment of the axle spacings marked >= in Bilaga 1, up to the rear group clear of the bridge; 0 = the shortest spacing only; at least 0.1 otherwise">
+  <div class="lbl" id="lW" style="left:184px; top:164px"><i>w</i> (m)</div>
+  <input class="f" id="iW" style="left:252px; top:164px; width:76px">
+  <div class="mbtn" id="bW" style="left:328px; top:164px" title="Number of lanes 3 m wide; or type any carriageway width in the box">&#9660;</div>
+  <div id="nW" style="position:absolute; height:22px; line-height:22px; white-space:nowrap; pointer-events:none; font:inherit; top:164px"></div>
 
-  <div class="lbl" style="left:326px; top:86px">Show</div>
-  <select class="f" id="iShw" style="left:394px; top:86px; width:80px; font-size:11px"
+  <div class="lbl" style="left:354px; top:86px">Show</div>
+  <select class="f" id="iShw" style="left:422px; top:86px; width:80px; font-size:11px"
           title="Section: at x_p.  Critical: where each effect is largest.  Envelope: max and min along the beam"></select>
-  <div class="lbl" style="left:326px; top:112px"><i>x</i><sub>p</sub> (m)</div>
-  <input class="f" id="iXp" style="left:394px; top:112px; width:80px" title="Section position; or drag the marker in the sketch">
-  <div class="lbl" id="lV" style="left:326px; top:138px"><i>v</i> (km/h)</div>
-  <input class="f" id="iV" style="left:394px; top:138px; width:80px" title="Speed in the dynamic allowance, formula (8-1); TRVINFRA-00331: 80 km/h">
+  <div class="lbl" style="left:354px; top:112px"><i>x</i><sub>p</sub> (m)</div>
+  <input class="f" id="iXp" style="left:422px; top:112px; width:80px" title="Section position; or drag the marker in the sketch">
+  <div class="lbl" id="lV" style="left:354px; top:138px"><i>v</i> (km/h)</div>
+  <input class="f" id="iV" style="left:422px; top:138px; width:80px" title="Speed in the dynamic allowance, formula (8-1); TRVINFRA-00331: 80 km/h">
 
-  <div class="lbl" id="lGap" style="left:326px; top:164px">Gap (m)</div>
-  <select class="f" id="iGap" style="left:394px; top:164px; width:80px; font-size:11px"
+  <div class="lbl" id="lGap" style="left:354px; top:164px">Gap (m)</div>
+  <select class="f" id="iGap" style="left:422px; top:164px; width:80px; font-size:11px"
           title="Free distance between the two parts of j, k and l, TRVINFRA-00331 K224831: 45 m, or 25 m on a motorway and in design"></select>
 
   <!-- model -->
@@ -134,14 +136,15 @@
 
   <div class="menu" id="mLoad"></div>
   <div class="menu" id="mEI"></div>
+  <div class="menu" id="mW"></div>
   <div id="dlg"></div>
   <div id="tip"></div>
 </div>
-<div id="foot">Last modified 2026-11-08<div style="max-width:560px; margin:4px auto 0; font-style:italic">For research, education and preliminary assessment. Provided "as is", without warranty. Results must be verified independently by the user, and the author accepts no liability for their use.</div></div>
-<script src="beamstat2d.js?v=2026-11-08a"></script>
-<script src="plot.js?v=2026-11-08a"></script>
-<script src="xlsx.js?v=2026-11-08a"></script>
-<script src="app.js?v=2026-11-08a"></script>
+<div id="foot">Last modified 2026-11-09<div style="max-width:560px; margin:4px auto 0; font-style:italic">For research, education and preliminary assessment. Provided "as is", without warranty. Results must be verified independently by the user, and the author accepts no liability for their use.</div></div>
+<script src="beamstat2d.js?v=2026-11-09a"></script>
+<script src="plot.js?v=2026-11-09a"></script>
+<script src="xlsx.js?v=2026-11-09a"></script>
+<script src="app.js?v=2026-11-09a"></script>
 <script data-goatcounter="https://addekth.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
